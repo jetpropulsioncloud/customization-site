@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockClub — Server Page Builder (Prototype)</title>
+    <link rel="stylesheet" href="builder.css" />
+  </head>
+
+  <body>
+    <div class="topbar">
+      <div class="wrap topbar-inner">
+        <div class="brand">
+          <div class="logo-mark"></div>
+          <div class="logo-text">BlockClub</div>
+          <div class="muted" style="margin-left: 10px; font-weight: 800;">Server Page Builder</div>
+        </div>
+
+        <div class="top-actions">
+          <button class="btn small ghost" id="toggleDeco" type="button">Edit decorations: Off</button>
+          <button class="btn small" id="saveBtn" type="button">Save</button>
+          <button class="btn small" id="loadBtn" type="button">Load</button>
+          <button class="btn small" id="exportBtn" type="button">Export JSON</button>
+          <button class="btn small primary" id="resetBtn" type="button">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <main class="wrap builder-shell">
+      <aside class="side">
+        <div class="panel">
+          <div class="panel-title">Blocks</div>
+
+          <div class="stack">
+            <button class="btn primary" id="addText" type="button">Add Text Box</button>
+            <button class="btn" id="addImage" type="button">Add Image Box</button>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="panel-title">Decorations</div>
+          <div class="muted small">
+            Toggle “Edit decorations” on the top bar, then place emojis on the canvas
+          </div>
+
+          <div class="deco-row">
+            <input id="emojiInput" class="input" value="✨" maxlength="4" />
+            <button class="btn" id="addEmoji" type="button">Add Emoji</button>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="panel-title">Tips</div>
+          <ul class="bullets">
+            <li>Drag blocks by their header</li>
+            <li>Resize from the bottom-right handle</li>
+            <li>Text boxes are editable (click inside and type)</li>
+            <li>Image boxes: click “Choose image”</li>
+          </ul>
+        </div>
+      </aside>
+
+      <section class="stage">
+        <div class="stage-head">
+          <div class="server-mini">
+            <div class="server-icon"></div>
+            <div>
+              <div class="server-name">Example Server Name</div>
+              <div class="server-ip">play.example.net</div>
+            </div>
+          </div>
+
+          <div class="pillline">
+            <span class="pillchip">Online</span>
+            <span class="pillchip">42 players</span>
+            <span class="pillchip">1,204 views</span>
+          </div>
+        </div>
+
+        <div id="canvas" class="canvas" aria-label="Builder canvas">
+          <div id="gridOverlay" class="grid-overlay"></div>
+
+          <div id="blocksLayer" class="layer blocks-layer"></div>
+
+          <div id="decoLayer" class="layer deco-layer"></div>
+
+          <div id="decoShield" class="deco-shield" hidden></div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="exportDialog" class="dialog">
+      <div class="dialog-head">
+        <div class="dialog-title">Export JSON</div>
+        <button class="btn small ghost" id="closeExport" type="button">Close</button>
+      </div>
+      <textarea id="exportArea" spellcheck="false"></textarea>
+      <div class="dialog-foot">
+        <button class="btn primary" id="copyExport" type="button">Copy</button>
+      </div>
+    </dialog>
+
+    <script src="builder.js"></script>
+  </body>
+</html>
