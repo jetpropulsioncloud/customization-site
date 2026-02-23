@@ -521,3 +521,16 @@ textarea.control {
   font-size: 12px;
   line-height: 1;
 }
+body.preview .side {
+  display: none;
+}
+
+body.preview .grid-overlay {
+  display: none;
+}
+
+body.preview .block-head,
+body.preview .resize,
+body.preview .deco-resize {
+  display: none;
+}

@@ -6,6 +6,7 @@ const decoLayer = document.getElementById("decoLayer");
 
 const addTextBtn = document.getElementById("addText");
 const addImageBtn = document.getElementById("addImage");
+const fontSelect = document.getElementById("fontSelect");
 
 const toggleDecoBtn = document.getElementById("toggleDeco");
 const addEmojiBtn = document.getElementById("addEmoji");
@@ -20,13 +21,19 @@ const exportDialog = document.getElementById("exportDialog");
 const exportArea = document.getElementById("exportArea");
 const closeExport = document.getElementById("closeExport");
 const copyExport = document.getElementById("copyExport");
+const MAX_TEXT_BLOCKS = 5;
+const MAX_IMAGE_BLOCKS = 5;
+const MAX_DECOS = 10;
+const addBannerBtn = document.getElementById("addBanner");
 
 let decoMode = false;
+let history = [];
 
 const state = {
   blocks: [],
   decorations: [],
-  selectedDecoId: null
+  selectedDecoId: null,
+  selectedBlockId: null
 };
 
 function uid(prefix) {
@@ -51,7 +58,11 @@ function pxToGrid(xPx, yPx) {
   const gy = Math.round(yPx / rowH);
   return { x: clamp(gx, 0, cols - 1), y: clamp(gy, 0, 999) };
 }
-
+function saveState() {
+  history.push(JSON.stringify(state));
+  if (history.length > 50) history.shift();
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+}
 function sizePxToGrid(wPx, hPx) {
   const { cols, colW, rowH } = getGrid();
   const gw = Math.round(wPx / colW);
@@ -108,7 +119,13 @@ function makeBlockShell(b) {
     renderAll();
     saveState();
   });
-
+  el.addEventListener("pointerdown", (e) => {
+    if (decoMode) return;
+    state.selectedBlockId = b.id;
+    if (fontSelect) {
+      fontSelect.value = b.fontFamily || "inherit";
+    }
+  });
   actions.appendChild(del);
   head.appendChild(title);
   head.appendChild(actions);
@@ -129,7 +146,62 @@ function makeBlockShell(b) {
 
   return { el, body };
 }
+function addBannerBlock() {
+  if (state.blocks.some(b => b.type === "banner")) {
+    alert("Only one banner allowed.");
+    return;
+  }
 
+  const b = {
+    id: uid("blk"),
+    type: "banner",
+    x: 0,
+    y: 0,
+    w: 12,
+    h: 6,
+    dataUrl: ""
+  };
+
+  state.blocks.push(b);
+  renderAll();
+}
+function addVoteBlock() {
+  if (state.blocks.some(b => b.type === "vote")) {
+    alert("Only one vote button allowed.");
+    return;
+  }
+
+  const b = {
+    id: uid("blk"),
+    type: "vote",
+    x: 9,
+    y: 6,
+    w: 3,
+    h: 3
+  };
+
+  state.blocks.push(b);
+  renderAll();
+}
+function togglePreview(on) {
+  document.body.classList.toggle("preview", on);
+}
+function validateBeforePublish() {
+  const hasBanner = state.blocks.some(b => b.type === "banner");
+  const hasVote = state.blocks.some(b => b.type === "vote");
+
+  if (!hasBanner) {
+    alert("You must add a banner.");
+    return false;
+  }
+
+  if (!hasVote) {
+    alert("You must add a vote button.");
+    return false;
+  }
+
+  return true;
+}
 function renderBlock(b) {
   const { el, body } = makeBlockShell(b);
   const { px, py, pw, ph } = gridToPx(b.x, b.y, b.w, b.h);
@@ -149,7 +221,9 @@ function renderBlock(b) {
     });
     body.appendChild(rte);
   }
-
+  if (b.fontFamily) {
+    rte.style.fontFamily = b.fontFamily;
+  }
   if (b.type === "image") {
     const box = document.createElement("div");
     box.className = "imagebox";
@@ -164,6 +238,12 @@ function renderBlock(b) {
     const preview = document.createElement("div");
     preview.className = "muted";
     preview.style.fontWeight = "900";
+  if (b.type === "vote") {
+    const btn = document.createElement("button");
+    btn.className = "btn primary";
+    btn.textContent = "Vote for this server";
+    body.appendChild(btn);
+  }
 
     if (b.dataUrl) {
       box.style.backgroundImage = `url('${b.dataUrl}')`;
@@ -448,6 +528,10 @@ function setupDecoResize(decoEl, handleEl, d) {
 }
 
 function addTextBlock() {
+  if (state.blocks.filter(b => b.type === "text").length >= MAX_TEXT_BLOCKS) {
+    alert("Maximum text boxes reached.");
+    return;
+  }
   const id = uid("blk");
   const b = {
     id,
@@ -463,6 +547,10 @@ function addTextBlock() {
 }
 
 function addImageBlock() {
+  if (state.blocks.filter(b => b.type === "image").length >= MAX_IMAGE_BLOCKS) {
+    alert("Maximum image boxes reached.");
+    return;
+  }
   const id = uid("blk");
   const b = {
     id,
@@ -575,7 +663,17 @@ canvas.addEventListener("pointerdown", (e) => {
 
 addTextBtn.addEventListener("click", addTextBlock);
 addImageBtn.addEventListener("click", addImageBlock);
-
+addBannerBtn.addEventListener("click", addBannerBlock);
+if (fontSelect) {
+  fontSelect.addEventListener("change", () => {
+    if (!state.selectedBlockId) return;
+    const b = state.blocks.find(x => x.id === state.selectedBlockId);
+    if (!b) return;
+    b.fontFamily = fontSelect.value || "inherit";
+    renderAll();
+    saveState();
+  });
+}
 toggleDecoBtn.addEventListener("click", () => setDecoMode(!decoMode));
 addEmojiBtn.addEventListener("click", addEmojiDeco);
 
@@ -633,6 +731,18 @@ closeExport.addEventListener("click", () => exportDialog.close());
 copyExport.addEventListener("click", copyExportText);
 
 window.addEventListener("resize", () => renderAll());
+window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.key === "z") {
+    if (history.length > 1) {
+      history.pop();
+      const prev = history[history.length - 1];
+      const parsed = JSON.parse(prev);
+      state.blocks = parsed.blocks;
+      state.decorations = parsed.decorations;
+      renderAll();
+    }
+  }
+});
 
 addTextBlock();
 addImageBlock();

@@ -20,6 +20,7 @@
           <button class="btn small ghost" id="toggleDeco" type="button">Edit decorations: Off</button>
           <button class="btn small" id="saveBtn" type="button">Save</button>
           <button class="btn small" id="loadBtn" type="button">Load</button>
+          <button class="btn small" id="previewBtn">Preview</button>
           <button class="btn small" id="exportBtn" type="button">Export JSON</button>
           <button class="btn small primary" id="resetBtn" type="button">Reset</button>
         </div>
@@ -33,7 +34,19 @@
 
           <div class="stack">
             <button class="btn primary" id="addText" type="button">Add Text Box</button>
+            <button class="btn" id="addBanner" type="button">Add Banner</button>
             <button class="btn" id="addImage" type="button">Add Image Box</button>
+          </div>
+          <div class="hr"></div>
+
+          <div class="panel-title">Text style</div>
+          <div class="stack">
+            <select id="fontSelect" class="control">
+              <option value="inherit">Default</option>
+              <option value="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial">Sans</option>
+              <option value="ui-serif, Georgia, Times, serif">Serif</option>
+              <option value="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace">Mono</option>
+            </select>
           </div>
 
           <div class="hr"></div>
