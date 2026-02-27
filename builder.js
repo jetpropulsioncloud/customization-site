@@ -7,6 +7,9 @@ const decoLayer = document.getElementById("decoLayer");
 const addTextBtn = document.getElementById("addText");
 const addImageBtn = document.getElementById("addImage");
 const fontSelect = document.getElementById("fontSelect");
+const addVoteBtn = document.getElementById("addVote");
+const previewBtn = document.getElementById("previewBtn");
+const publishBtn = document.getElementById("publishBtn");
 
 const toggleDecoBtn = document.getElementById("toggleDeco");
 const addEmojiBtn = document.getElementById("addEmoji");
@@ -28,6 +31,31 @@ const addBannerBtn = document.getElementById("addBanner");
 
 let decoMode = false;
 let history = [];
+let previewWindow = null;
+
+function openOrFocusPreview() {
+  if (previewWindow && !previewWindow.closed) {
+    previewWindow.focus();
+    return previewWindow;
+  }
+  previewWindow = window.open("preview.html", "bc_preview");
+  return previewWindow;
+}
+
+function sendPreviewState() {
+  const w = openOrFocusPreview();
+  if (!w) {
+    alert("Popup blocked. Allow popups for preview.");
+    return;
+  }
+
+  const payload = {
+    type: "BC_PREVIEW_STATE",
+    state: JSON.parse(JSON.stringify(state))
+  };
+
+  w.postMessage(payload, window.location.origin);
+}
 
 const state = {
   blocks: [],
@@ -59,9 +87,14 @@ function pxToGrid(xPx, yPx) {
   return { x: clamp(gx, 0, cols - 1), y: clamp(gy, 0, 999) };
 }
 function saveState() {
-  history.push(JSON.stringify(state));
+  const snapshot = JSON.stringify(state);
+  history.push(snapshot);
   if (history.length > 50) history.shift();
-  localStorage.setItem(LS_KEY, JSON.stringify(state));
+  localStorage.setItem(LS_KEY, snapshot);
+
+  if (previewWindow && !previewWindow.closed) {
+    sendPreviewState();
+  }
 }
 function sizePxToGrid(wPx, hPx) {
   const { cols, colW, rowH } = getGrid();
@@ -132,12 +165,57 @@ function makeBlockShell(b) {
 
   const body = document.createElement("div");
   body.className = "block-body";
+  const rot = document.createElement("div");
+  rot.className = "block-rot";
 
+  rot.addEventListener("pointerdown", (e) => {
+    if (decoMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = canvas.getBoundingClientRect();
+    const blockRect = el.getBoundingClientRect();
+
+    const centerX = blockRect.left + blockRect.width / 2;
+    const centerY = blockRect.top + blockRect.height / 2;
+
+    const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+    const startRot = Number(b.rot || 0);
+
+    rot.setPointerCapture(e.pointerId);
+
+    const onMove = (ev) => {
+      ev.preventDefault();
+
+      const ang = Math.atan2(ev.clientY - centerY, ev.clientX - centerX);
+      const deltaDeg = (ang - startAngle) * (180 / Math.PI);
+
+      let next = startRot + deltaDeg;
+
+      if (ev.shiftKey) {
+        next = Math.round(next / 15) * 15;
+      }
+
+      b.rot = next;
+      el.style.transform = `rotate(${b.rot}deg)`;
+    };
+
+    const onUp = () => {
+      rot.releasePointerCapture(e.pointerId);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      saveState();
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  });
   const resize = document.createElement("div");
   resize.className = "resize";
   resize.title = "Resize";
 
   el.appendChild(head);
+  el.appendChild(rot);
   el.appendChild(body);
   el.appendChild(resize);
 
@@ -151,14 +229,14 @@ function addBannerBlock() {
     alert("Only one banner allowed.");
     return;
   }
-
   const b = {
     id: uid("blk"),
     type: "banner",
     x: 0,
     y: 0,
     w: 12,
-    h: 6,
+    h: 4,
+    rot: 0,
     dataUrl: ""
   };
 
@@ -174,10 +252,11 @@ function addVoteBlock() {
   const b = {
     id: uid("blk"),
     type: "vote",
-    x: 9,
+    x: 3,
     y: 6,
-    w: 3,
-    h: 3
+    w: 6,
+    h: 2,
+    rot: 0
   };
 
   state.blocks.push(b);
@@ -187,7 +266,7 @@ function togglePreview(on) {
   document.body.classList.toggle("preview", on);
 }
 function validateBeforePublish() {
-  const hasBanner = state.blocks.some(b => b.type === "banner");
+  const hasBanner = (state.blocks || []).some(b => b.type === "banner" && (b.dataUrl || "").length > 0);
   const hasVote = state.blocks.some(b => b.type === "vote");
 
   if (!hasBanner) {
@@ -205,31 +284,59 @@ function validateBeforePublish() {
 function renderBlock(b) {
   const { el, body } = makeBlockShell(b);
   const { px, py, pw, ph } = gridToPx(b.x, b.y, b.w, b.h);
+
   el.style.left = `${px}px`;
   el.style.top = `${py}px`;
   el.style.width = `${pw}px`;
   el.style.height = `${ph}px`;
-
+  el.style.transform = `rotate(${b.rot || 0}deg)`;
+  
   if (b.type === "text") {
     const rte = document.createElement("div");
     rte.className = "rte";
     rte.contentEditable = "true";
     rte.spellcheck = true;
     rte.innerHTML = b.html || "<b>Title</b><br/>Write your lore, staff info, rules, etc.";
+    rte.style.fontFamily = b.fontFamily || "inherit";
+
     rte.addEventListener("input", () => {
       b.html = rte.innerHTML;
+      saveState();
     });
+
+    rte.addEventListener("keydown", (e) => {
+      if (e.key !== "Tab") return;
+
+      e.preventDefault();
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const range = sel.getRangeAt(0);
+      const spaces = document.createTextNode("\u00A0\u00A0\u00A0\u00A0");
+      range.insertNode(spaces);
+
+      range.setStartAfter(spaces);
+      range.setEndAfter(spaces);
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      b.html = rte.innerHTML;
+      saveState();
+    });
+
     body.appendChild(rte);
   }
-  if (b.fontFamily) {
-    rte.style.fontFamily = b.fontFamily;
-  }
-  if (b.type === "image") {
+
+  if (b.type === "image" || b.type === "banner") {
     const box = document.createElement("div");
     box.className = "imagebox";
 
     const label = document.createElement("div");
-    label.innerHTML = "<b>Image Block</b><div class='muted'>Choose an image to preview.</div>";
+    label.innerHTML =
+      b.type === "banner"
+        ? "<b>Banner</b><div class='muted'>Choose an image for your banner.</div>"
+        : "<b>Image Block</b><div class='muted'>Choose an image to preview.</div>";
 
     const input = document.createElement("input");
     input.type = "file";
@@ -238,12 +345,6 @@ function renderBlock(b) {
     const preview = document.createElement("div");
     preview.className = "muted";
     preview.style.fontWeight = "900";
-  if (b.type === "vote") {
-    const btn = document.createElement("button");
-    btn.className = "btn primary";
-    btn.textContent = "Vote for this server";
-    body.appendChild(btn);
-  }
 
     if (b.dataUrl) {
       box.style.backgroundImage = `url('${b.dataUrl}')`;
@@ -267,6 +368,8 @@ function renderBlock(b) {
       box.style.borderStyle = "solid";
       label.style.display = "none";
       preview.textContent = "Image set";
+
+      saveState();
     });
 
     box.appendChild(label);
@@ -275,16 +378,25 @@ function renderBlock(b) {
     body.appendChild(box);
   }
 
-  blocksLayer.appendChild(el);
-}
+  if (b.type === "vote") {
+    const wrap = document.createElement("div");
+    wrap.style.display = "flex";
+    wrap.style.width = "100%";
+    wrap.style.height = "100%";
+    body.style.padding = "8px";
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(String(fr.result || ""));
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
+    const a = document.createElement("a");
+    a.href = b.voteUrl || "#";
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.className = "vote-bar";
+    a.textContent = b.label || "Vote here";
+
+    wrap.appendChild(a);
+    body.appendChild(wrap);
+  }
+
+  blocksLayer.appendChild(el);
 }
 
 function renderDeco(d) {
@@ -422,9 +534,16 @@ function setupDrag(containerEl, handleEl, item, kind) {
         const nextLeft = origLeft + dx;
         const nextTop = origTop + dy;
 
-        const g = pxToGrid(nextLeft, nextTop);
-        item.x = g.x;
-        item.y = g.y;
+        const { cols, colW, rowH } = getGrid();
+
+        const maxX = Math.max(0, cols - item.w);
+        const maxY = Math.max(0, Math.floor(canvasRect.height / rowH) - item.h);
+
+        const gx = Math.round(nextLeft / colW);
+        const gy = Math.round(nextTop / rowH);
+
+        item.x = clamp(gx, 0, maxX);
+        item.y = clamp(gy, 0, maxY);
 
         const { px, py, pw, ph } = gridToPx(item.x, item.y, item.w, item.h);
         containerEl.style.left = `${px}px`;
@@ -540,6 +659,7 @@ function addTextBlock() {
     y: 1,
     w: 6,
     h: 8,
+    rot: 0,
     html: "<b>Title</b><br/>Write your lore, staff info, rules, etc."
   };
   state.blocks.push(b);
@@ -559,6 +679,7 @@ function addImageBlock() {
     y: 1,
     w: 4,
     h: 8,
+    rot: 0,
     dataUrl: ""
   };
   state.blocks.push(b);
@@ -611,11 +732,6 @@ function setDecoMode(on) {
   }
 }
 
-function saveState() {
-  const payload = JSON.stringify(state);
-  localStorage.setItem(LS_KEY, payload);
-}
-
 function selectDeco(el) {
   for (const node of decoLayer.querySelectorAll(".deco")) {
     node.classList.remove("selected");
@@ -663,7 +779,14 @@ canvas.addEventListener("pointerdown", (e) => {
 
 addTextBtn.addEventListener("click", addTextBlock);
 addImageBtn.addEventListener("click", addImageBlock);
-addBannerBtn.addEventListener("click", addBannerBlock);
+addBannerBtn.addEventListener("click", () => {
+  addBannerBlock();
+  saveState();
+});
+addVoteBtn.addEventListener("click", () => {
+  addVoteBlock();
+  saveState();
+});
 if (fontSelect) {
   fontSelect.addEventListener("change", () => {
     if (!state.selectedBlockId) return;
@@ -729,7 +852,25 @@ window.addEventListener("keydown", (e) => {
 
 closeExport.addEventListener("click", () => exportDialog.close());
 copyExport.addEventListener("click", copyExportText);
+previewBtn.addEventListener("click", () => {
+  saveState();
+  sendPreviewState();
+});
+publishBtn.addEventListener("click", () => {
+  const hasBanner = (state.blocks || []).some(b => b.type === "banner" && b.imageDataUrl);
+  const hasVote = (state.blocks || []).some(b => b.type === "vote" && (b.voteUrl || "").trim().length > 0);
 
+  if (!hasBanner || !hasVote) {
+    const missing = [];
+    if (!hasBanner) missing.push("Banner (with an uploaded image)");
+    if (!hasVote) missing.push("Vote button (with a URL)");
+    alert("Before publishing, add:\n- " + missing.join("\n- "));
+    return;
+  }
+
+  saveState();
+  alert("Looks good — ready to publish.");
+});
 window.addEventListener("resize", () => renderAll());
 window.addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.key === "z") {
