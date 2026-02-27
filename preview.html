@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockClub — Preview</title>
+    <link rel="stylesheet" href="builder.css" />
+    <style>
+      .topbar .top-actions { gap: 8px; }
+      .preview-shell { padding: 18px 0 30px; }
+
+      .preview-stage {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+
+      .preview-note {
+        color: var(--muted);
+        font-weight: 800;
+        font-size: 13px;
+        margin: 10px 0 14px;
+      }
+
+      .preview-canvas {
+        position: relative;
+        min-height: 740px;
+        border-radius: var(--soft);
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: rgba(255, 255, 255, 0.78);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .pv-block {
+        position: absolute;
+        border-radius: 16px;
+        border: 1px solid rgba(226, 232, 240, 0.95);
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 10px 26px rgba(2, 6, 23, 0.10);
+        overflow: hidden;
+      }
+
+      .pv-body {
+        position: absolute;
+        inset: 0;
+        padding: 12px;
+      }
+
+      .pv-text {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        line-height: 1.55;
+        font-size: 14px;
+        color: var(--text);
+      }
+
+      .pv-image {
+        width: 100%;
+        height: 100%;
+        border-radius: 14px;
+        background-size: cover;
+        background-position: center;
+        border: 1px solid rgba(226,232,240,0.9);
+      }
+
+      .pv-vote {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        font-weight: 950;
+        text-decoration: none;
+        background: linear-gradient(180deg, rgba(34,197,94,0.95), rgba(34,197,94,0.75));
+        color: #05120a;
+        border: 1px solid rgba(255,255,255,0.18);
+        box-shadow: 0 10px 30px rgba(34,197,94,0.18);
+      }
+
+      .pv-deco {
+        position: absolute;
+        user-select: none;
+        pointer-events: none;
+        transform-origin: center;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="topbar">
+      <div class="wrap topbar-inner">
+        <div class="brand">
+          <div class="logo-mark"></div>
+          <div class="logo-text">BlockClub</div>
+          <div class="muted" style="margin-left: 10px; font-weight: 800;">Preview</div>
+        </div>
+
+        <div class="top-actions">
+          <button class="btn small ghost" id="closeBtn" type="button">Close preview</button>
+        </div>
+      </div>
+    </div>
+
+    <main class="preview-shell">
+      <div class="preview-stage wrap">
+        <div class="preview-note" id="note"></div>
+        <div id="canvas" class="preview-canvas" aria-label="Preview canvas"></div>
+      </div>
+    </main>
+
+    <script src="preview.js"></script>
+  </body>
+</html>
