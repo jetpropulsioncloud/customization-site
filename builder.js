@@ -1,4 +1,16 @@
+let fb = null;
+
+async function loadFirebase() {
+  if (fb) return fb;
+
+  const firestore = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
+  const storage = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js");
+
+  fb = { firestore, storage };
+  return fb;
+}
 const LS_KEY = "bc_builder_state_v1";
+const LAST_SERVER_ID_KEY = "bc_last_server_id";
 
 const canvas = document.getElementById("canvas");
 const blocksLayer = document.getElementById("blocksLayer");
@@ -15,8 +27,6 @@ const toggleDecoBtn = document.getElementById("toggleDeco");
 const addEmojiBtn = document.getElementById("addEmoji");
 const emojiInput = document.getElementById("emojiInput");
 
-const saveBtn = document.getElementById("saveBtn");
-const loadBtn = document.getElementById("loadBtn");
 const exportBtn = document.getElementById("exportBtn");
 const resetBtn = document.getElementById("resetBtn");
 
@@ -256,7 +266,9 @@ function addVoteBlock() {
     y: 6,
     w: 6,
     h: 2,
-    rot: 0
+    rot: 0,
+    label: "Vote here",
+    voteUrl: ""
   };
 
   state.blocks.push(b);
@@ -265,17 +277,172 @@ function addVoteBlock() {
 function togglePreview(on) {
   document.body.classList.toggle("preview", on);
 }
+function sanitizeHtml(dirty) {
+  const t = document.createElement("template");
+  t.innerHTML = String(dirty || "");
+
+  const blocked = new Set(["script","style","iframe","object","embed","link","meta"]);
+  const walker = document.createTreeWalker(t.content, NodeFilter.SHOW_ELEMENT, null);
+
+  const toRemove = [];
+  while (walker.nextNode()) {
+    const el = walker.currentNode;
+
+    if (blocked.has(el.tagName.toLowerCase())) {
+      toRemove.push(el);
+      continue;
+    }
+
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      const val = (attr.value || "").trim();
+
+      if (name.startsWith("on")) el.removeAttribute(attr.name);
+      if ((name === "href" || name === "src") && val.toLowerCase().startsWith("javascript:")) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  }
+
+  for (const el of toRemove) el.remove();
+  return t.innerHTML;
+}
+
+function buildPublishPayload() {
+  const payload = JSON.parse(JSON.stringify(state));
+
+  for (const b of payload.blocks || []) {
+    if (b.type === "text") b.html = sanitizeHtml(b.html);
+    if (b.type === "vote") {
+      b.voteUrl = String(b.voteUrl || "").trim();
+      b.label = String(b.label || "Vote here").trim() || "Vote here";
+    }
+  }
+
+  return payload;
+}
+async function publishToFirebase(payload) {
+  const { firestore, storage } = await loadFirebase();
+  const { collection, doc, setDoc, serverTimestamp } = firestore;
+  const { ref } = storage;
+
+  const db = window.bcDb;
+  const st = window.bcStorage;
+
+  if (!db || !st) {
+    throw new Error("Firebase not initialized. Check builder.html module script.");
+  }
+
+  const nameEl = document.getElementById("serverNameInput");
+  const ipEl = document.getElementById("serverIpInput");
+
+  const serverName = String(nameEl?.value || "").trim();
+  const serverIp = String(ipEl?.value || "").trim();
+
+  if (!serverName || !serverIp) {
+    alert("Add Server name and Server IP before publishing.");
+    return null;
+  }
+
+  const existingId = localStorage.getItem(LAST_SERVER_ID_KEY);
+
+  const serverRef = existingId
+    ? doc(db, "servers", existingId)
+    : doc(collection(db, "servers"));
+
+  const serverId = serverRef.id;
+  const isNew = !existingId;
+
+  let bannerUrl = "";
+  const nextBlocks = [];
+
+  for (const b of payload.blocks || []) {
+    if (b.type === "banner") {
+      const dataUrl = String(b.dataUrl || "");
+      if (!dataUrl) {
+        alert("Banner needs an uploaded image before publishing.");
+        return null;
+      }
+
+      const webp = await compressToWebp(dataUrl, 1600, 0.82);
+      const storageRef = ref(st, `serverPages/${serverId}/banner.webp`);
+      bannerUrl = await uploadBlobAndGetUrl(storageRef, webp);
+
+      const copy = { ...b };
+      delete copy.dataUrl;
+      copy.imageUrl = bannerUrl;
+      nextBlocks.push(copy);
+      continue;
+    }
+
+    if (b.type === "image") {
+      const dataUrl = String(b.dataUrl || "");
+      if (!dataUrl) {
+        nextBlocks.push(b);
+        continue;
+      }
+
+      const webp = await compressToWebp(dataUrl, 1200, 0.82);
+      const fileId = safeFileName(b.id || crypto.randomUUID());
+      const storageRef = ref(st, `serverPages/${serverId}/images/${fileId}.webp`);
+      const imageUrl = await uploadBlobAndGetUrl(storageRef, webp);
+
+      const copy = { ...b };
+      delete copy.dataUrl;
+      copy.imageUrl = imageUrl;
+      nextBlocks.push(copy);
+      continue;
+    }
+
+    nextBlocks.push(b);
+  }
+
+  if (!bannerUrl) {
+    alert("Banner upload failed.");
+    return null;
+  }
+
+  const ownerUid = window.bcAuth?.currentUser?.uid || null;
+
+  await setDoc(serverRef, {
+    ownerUid,
+    name: serverName,
+    ip: serverIp,
+    bannerUrl,
+    ...(isNew ? { createdAt: serverTimestamp() } : {}),
+    updatedAt: serverTimestamp(),
+    views: 0,
+    upvotes: 0,
+    isPublished: true
+  }, { merge: true });
+
+  const pageRef = doc(db, "servers", serverId, "pages", "main");
+
+  await setDoc(pageRef, {
+    version: 1,
+    blocks: nextBlocks,
+    decorations: payload.decorations || [],
+    updatedAt: serverTimestamp()
+  });
+  localStorage.setItem(LAST_SERVER_ID_KEY, serverId);
+  return { serverId, bannerUrl };
+}
 function validateBeforePublish() {
-  const hasBanner = (state.blocks || []).some(b => b.type === "banner" && (b.dataUrl || "").length > 0);
-  const hasVote = state.blocks.some(b => b.type === "vote");
+  const hasBanner = (state.blocks || []).some(
+    b => b.type === "banner" && (b.dataUrl || b.imageUrl || "").length > 0
+  );
+
+  const hasVoteUrl = (state.blocks || []).some(
+    b => b.type === "vote" && (b.voteUrl || "").trim().length > 0
+  );
 
   if (!hasBanner) {
-    alert("You must add a banner.");
+    alert("You must add a banner with an uploaded image.");
     return false;
   }
 
-  if (!hasVote) {
-    alert("You must add a vote button.");
+  if (!hasVoteUrl) {
+    alert("You must add a vote button and set its URL.");
     return false;
   }
 
@@ -346,8 +513,9 @@ function renderBlock(b) {
     preview.className = "muted";
     preview.style.fontWeight = "900";
 
-    if (b.dataUrl) {
-      box.style.backgroundImage = `url('${b.dataUrl}')`;
+    const src = b.dataUrl || b.imageUrl || "";
+    if (src) {
+      box.style.backgroundImage = `url('${src}')`;
       box.style.backgroundSize = "cover";
       box.style.backgroundPosition = "center";
       box.style.borderStyle = "solid";
@@ -379,26 +547,137 @@ function renderBlock(b) {
   }
 
   if (b.type === "vote") {
-    const wrap = document.createElement("div");
-    wrap.style.display = "flex";
-    wrap.style.width = "100%";
-    wrap.style.height = "100%";
-    body.style.padding = "8px";
+    body.style.padding = "10px";
+
+    const form = document.createElement("div");
+    form.className = "form";
+
+    const field1 = document.createElement("div");
+    field1.className = "field";
+
+    const label1 = document.createElement("div");
+    label1.className = "label";
+    label1.textContent = "Button text";
+
+    const inputLabel = document.createElement("input");
+    inputLabel.className = "control";
+    inputLabel.placeholder = "Vote here";
+    inputLabel.value = b.label || "Vote here";
+
+    inputLabel.addEventListener("input", () => {
+      b.label = inputLabel.value;
+      renderAll();
+      saveState();
+    });
+
+    field1.appendChild(label1);
+    field1.appendChild(inputLabel);
+
+    const field2 = document.createElement("div");
+    field2.className = "field";
+
+    const label2 = document.createElement("div");
+    label2.className = "label";
+    label2.textContent = "Vote URL";
+
+    const inputUrl = document.createElement("input");
+    inputUrl.className = "control";
+    inputUrl.placeholder = "https://...";
+    inputUrl.value = b.voteUrl || "";
+
+    inputUrl.addEventListener("input", () => {
+      b.voteUrl = inputUrl.value;
+      renderAll();
+      saveState();
+    });
+
+    field2.appendChild(label2);
+    field2.appendChild(inputUrl);
+
+    const previewWrap = document.createElement("div");
+    previewWrap.style.marginTop = "10px";
 
     const a = document.createElement("a");
-    a.href = b.voteUrl || "#";
+    a.href = (b.voteUrl || "#").trim() || "#";
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     a.className = "vote-bar";
-    a.textContent = b.label || "Vote here";
+    a.textContent = (b.label || "Vote here").trim() || "Vote here";
 
-    wrap.appendChild(a);
-    body.appendChild(wrap);
+    previewWrap.appendChild(a);
+
+    form.appendChild(field1);
+    form.appendChild(field2);
+    form.appendChild(previewWrap);
+
+    body.appendChild(form);
   }
 
   blocksLayer.appendChild(el);
 }
+function dataUrlToBlob(dataUrl) {
+  const parts = String(dataUrl).split(",");
+  const mime = parts[0].match(/:(.*?);/)?.[1] || "image/png";
+  const bin = atob(parts[1] || "");
+  const len = bin.length;
+  const arr = new Uint8Array(len);
+  for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
 
+async function blobToImage(blob) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+    return img;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function compressToWebp(dataUrl, maxW, quality) {
+  const blob = dataUrlToBlob(dataUrl);
+  const img = await blobToImage(blob);
+
+  const scale = Math.min(1, maxW / img.width);
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = w;
+  canvasEl.height = h;
+
+  const ctx = canvasEl.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const outBlob = await new Promise((resolve) => {
+    canvasEl.toBlob((b) => resolve(b), "image/webp", quality);
+  });
+
+  return outBlob;
+}
+
+function safeFileName(id) {
+  return String(id).replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+async function uploadBlobAndGetUrl(storageRef, blob) {
+  const { storage } = await loadFirebase();
+  const { uploadBytes, getDownloadURL } = storage;
+
+  await uploadBytes(storageRef, blob, {
+    contentType: blob.type || "image/webp",
+    cacheControl: "public,max-age=31536000"
+  });
+
+  return await getDownloadURL(storageRef);
+}
 function renderDeco(d) {
   const el = document.createElement("div");
   el.className = "deco";
@@ -799,15 +1078,6 @@ if (fontSelect) {
 }
 toggleDecoBtn.addEventListener("click", () => setDecoMode(!decoMode));
 addEmojiBtn.addEventListener("click", addEmojiDeco);
-
-saveBtn.addEventListener("click", () => {
-  saveState();
-  saveBtn.textContent = "Saved";
-  setTimeout(() => (saveBtn.textContent = "Save"), 900);
-});
-
-loadBtn.addEventListener("click", () => loadState());
-
 exportBtn.addEventListener("click", () => exportState());
 
 resetBtn.addEventListener("click", () => {
@@ -856,20 +1126,35 @@ previewBtn.addEventListener("click", () => {
   saveState();
   sendPreviewState();
 });
-publishBtn.addEventListener("click", () => {
-  const hasBanner = (state.blocks || []).some(b => b.type === "banner" && b.imageDataUrl);
-  const hasVote = (state.blocks || []).some(b => b.type === "vote" && (b.voteUrl || "").trim().length > 0);
+publishBtn.addEventListener("click", async () => {
+  const hasBanner = (state.blocks || []).some(b => b.type === "banner" && (b.dataUrl || "").length > 0);
+  const hasVoteUrl = (state.blocks || []).some(b => b.type === "vote" && (b.voteUrl || "").trim().length > 0);
 
-  if (!hasBanner || !hasVote) {
+  if (!hasBanner || !hasVoteUrl) {
     const missing = [];
     if (!hasBanner) missing.push("Banner (with an uploaded image)");
-    if (!hasVote) missing.push("Vote button (with a URL)");
+    if (!hasVoteUrl) missing.push("Vote button (with a URL)");
     alert("Before publishing, add:\n- " + missing.join("\n- "));
     return;
   }
 
-  saveState();
-  alert("Looks good — ready to publish.");
+    const payload = buildPublishPayload();
+
+    try {
+      const result = await publishToFirebase(payload);
+      if (!result) return;
+
+      exportArea.value = JSON.stringify(
+        { serverId: result.serverId, bannerUrl: result.bannerUrl, page: payload },
+        null,
+        2
+      );
+      exportDialog.showModal();
+
+      alert(`Published! serverId: ${result.serverId}`);
+    } catch (err) {
+      alert(String(err?.message || err));
+    }
 });
 window.addEventListener("resize", () => renderAll());
 window.addEventListener("keydown", (e) => {

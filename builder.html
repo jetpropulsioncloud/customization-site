@@ -13,13 +13,17 @@
         <div class="brand">
           <div class="logo-mark"></div>
           <div class="logo-text">BlockClub</div>
+          <div class="hr"></div>
+          <div class="panel-title">Server info</div>
+          <div class="stack">
+            <input id="serverNameInput" class="control" placeholder="Server name" />
+            <input id="serverIpInput" class="control" placeholder="Server IP" />
+          </div>
           <div class="muted" style="margin-left: 10px; font-weight: 800;">Server Page Builder</div>
         </div>
 
         <div class="top-actions">
           <button class="btn small ghost" id="toggleDeco" type="button">Edit decorations: Off</button>
-          <button class="btn small" id="saveBtn" type="button">Save</button>
-          <button class="btn small" id="loadBtn" type="button">Load</button>
           <button class="btn small" id="previewBtn" type="button">Preview</button>
           <button class="btn small" id="exportBtn" type="button">Export JSON</button>
           <button class="btn small primary" id="resetBtn" type="button">Reset</button>
@@ -33,7 +37,7 @@
           <div class="panel-title">Blocks</div>
 
           <div class="stack">
-            <button class="btn primary" id="addText" type="button">Add Text Box</button>
+            <button class="btn" id="addText" type="button">Add Text Box</button>
             <button class="btn" id="addImage" type="button">Add Image Box</button>
             <button class="btn" id="addBanner" type="button">Add Banner</button>
             <button class="btn" id="addVote" type="button">Add Vote Button</button>
@@ -114,6 +118,31 @@
         <button class="btn primary" id="copyExport" type="button">Copy</button>
       </div>
     </dialog>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+      import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+      import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+      import { getStorage } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
+
+      const firebaseConfig = {
+        apiKey: "PASTE",
+        authDomain: "PASTE",
+        projectId: "PASTE",
+        storageBucket: "PASTE",
+        messagingSenderId: "PASTE",
+        appId: "PASTE"
+      };
+
+      const app = initializeApp(firebaseConfig);
+
+      window.bcApp = app;
+      window.bcAuth = getAuth(app);
+      window.bcDb = getFirestore(app);
+      window.bcStorage = getStorage(app);
+
+      await signInAnonymously(window.bcAuth);
+    </script>
 
     <script src="builder.js"></script>
   </body>
