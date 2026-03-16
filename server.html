@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockClub — Server Page</title>
+    <link rel="stylesheet" href="builder.css" />
+    <style>
+      .server-shell {
+        padding: 18px 0 30px;
+      }
+
+      .server-stage {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+
+      .server-note {
+        color: var(--muted);
+        font-weight: 800;
+        font-size: 13px;
+        margin: 10px 0 14px;
+      }
+
+      .server-canvas {
+        position: relative;
+        min-height: 740px;
+        border-radius: var(--soft);
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: rgba(255, 255, 255, 0.78);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .pv-block {
+        position: absolute;
+        border-radius: 16px;
+        border: 1px solid rgba(226, 232, 240, 0.95);
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 10px 26px rgba(2, 6, 23, 0.10);
+        overflow: hidden;
+      }
+
+      .pv-body {
+        position: absolute;
+        inset: 0;
+        padding: 12px;
+      }
+
+      .pv-text {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        line-height: 1.55;
+        font-size: 14px;
+        color: var(--text);
+      }
+
+      .pv-image {
+        width: 100%;
+        height: 100%;
+        border-radius: 14px;
+        background-size: cover;
+        background-position: center;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+      }
+
+      .pv-vote {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        font-weight: 950;
+        text-decoration: none;
+        background: linear-gradient(180deg, rgba(34,197,94,0.95), rgba(34,197,94,0.75));
+        color: #05120a;
+        border: 1px solid rgba(255,255,255,0.18);
+        box-shadow: 0 10px 30px rgba(34,197,94,0.18);
+      }
+
+      .pv-deco {
+        position: absolute;
+        user-select: none;
+        pointer-events: none;
+        transform-origin: center;
+      }
+
+      .server-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      .server-meta {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .server-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(99,102,241,0.95), rgba(59,130,246,0.9));
+        box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
+      }
+
+      .server-name {
+        font-size: 24px;
+        font-weight: 950;
+      }
+
+      .server-ip {
+        color: var(--muted);
+        font-weight: 800;
+        margin-top: 4px;
+      }
+
+      .pillline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .pillchip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 900;
+        color: #0f172a;
+        background: rgba(255,255,255,0.82);
+        border: 1px solid rgba(226,232,240,0.9);
+      }
+
+      .error-box {
+        max-width: 720px;
+        margin: 40px auto;
+        padding: 20px;
+        border-radius: 18px;
+        border: 1px solid rgba(226,232,240,0.9);
+        background: white;
+        box-shadow: var(--shadow);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="topbar">
+      <div class="wrap topbar-inner">
+        <div class="brand">
+          <div class="logo-mark"></div>
+          <div class="logo-text">BlockClub</div>
+          <div class="muted" style="margin-left: 10px; font-weight: 800;">Server Page</div>
+        </div>
+      </div>
+    </div>
+
+    <main class="server-shell">
+      <div class="server-stage wrap">
+        <div class="server-head">
+          <div class="server-meta">
+            <div class="server-icon"></div>
+            <div>
+              <div class="server-name" id="serverName">Loading...</div>
+              <div class="server-ip" id="serverIp">Loading server...</div>
+            </div>
+          </div>
+
+          <div class="pillline">
+            <span class="pillchip" id="statusPill">Published</span>
+            <span class="pillchip" id="viewsPill">0 views</span>
+            <span class="pillchip" id="upvotesPill">0 upvotes</span>
+          </div>
+        </div>
+
+        <div class="server-note" id="note">Loading published server page…</div>
+        <div id="canvas" class="server-canvas" aria-label="Server page canvas"></div>
+      </div>
+    </main>
+
+    <script type="module" src="server.js"></script>
+  </body>
+</html>

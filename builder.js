@@ -38,6 +38,26 @@ const MAX_TEXT_BLOCKS = 5;
 const MAX_IMAGE_BLOCKS = 5;
 const MAX_DECOS = 10;
 const addBannerBtn = document.getElementById("addBanner");
+const params = new URLSearchParams(window.location.search);
+const serverIdFromUrl = params.get("serverId");
+
+function getDraftKey(serverId) {
+  return serverId ? `bc_builder_state_${serverId}` : LS_KEY;
+}
+
+function replaceUrlServerId(serverId) {
+  if (!serverId) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("serverId", serverId);
+  window.history.replaceState({}, "", url.toString());
+}
+
+function clearStateObject() {
+  state.blocks = [];
+  state.decorations = [];
+  state.selectedDecoId = null;
+  state.selectedBlockId = null;
+}
 
 let decoMode = false;
 let history = [];
@@ -100,7 +120,9 @@ function saveState() {
   const snapshot = JSON.stringify(state);
   history.push(snapshot);
   if (history.length > 50) history.shift();
-  localStorage.setItem(LS_KEY, snapshot);
+
+  const draftKey = getDraftKey(serverIdFromUrl || localStorage.getItem(LAST_SERVER_ID_KEY));
+  localStorage.setItem(draftKey, snapshot);
 
   if (previewWindow && !previewWindow.closed) {
     sendPreviewState();
@@ -344,14 +366,14 @@ async function publishToFirebase(payload) {
     return null;
   }
 
-  const existingId = localStorage.getItem(LAST_SERVER_ID_KEY);
+  const routedServerId = serverIdFromUrl || localStorage.getItem(LAST_SERVER_ID_KEY);
 
-  const serverRef = existingId
-    ? doc(db, "servers", existingId)
+  const serverRef = routedServerId
+    ? doc(db, "servers", routedServerId)
     : doc(collection(db, "servers"));
 
   const serverId = serverRef.id;
-  const isNew = !existingId;
+  const isNew = !routedServerId;
 
   let bannerUrl = "";
   const nextBlocks = [];
@@ -409,22 +431,31 @@ async function publishToFirebase(payload) {
     name: serverName,
     ip: serverIp,
     bannerUrl,
-    ...(isNew ? { createdAt: serverTimestamp() } : {}),
+    ...(isNew ? {
+      createdAt: serverTimestamp(),
+      views: 0,
+      upvotes: 0
+    } : {}),
     updatedAt: serverTimestamp(),
-    views: 0,
-    upvotes: 0,
+    pagePublishedAt: serverTimestamp(),
     isPublished: true
   }, { merge: true });
 
   const pageRef = doc(db, "servers", serverId, "pages", "main");
 
   await setDoc(pageRef, {
+    serverId,
     version: 1,
     blocks: nextBlocks,
     decorations: payload.decorations || [],
     updatedAt: serverTimestamp()
-  });
+  }, { merge: true });
   localStorage.setItem(LAST_SERVER_ID_KEY, serverId);
+  replaceUrlServerId(serverId);
+
+  const draftKey = getDraftKey(serverId);
+  localStorage.setItem(draftKey, JSON.stringify(state));
+
   return { serverId, bannerUrl };
 }
 function validateBeforePublish() {
@@ -1018,14 +1049,75 @@ function selectDeco(el) {
   el.classList.add("selected");
   state.selectedDecoId = el.dataset.id;
 }
+async function loadServerPageFromFirebase(serverId) {
+  const { firestore } = await loadFirebase();
+  const { doc, getDoc } = firestore;
 
-function loadState() {
-  const raw = localStorage.getItem(LS_KEY);
-  if (!raw) return;
+  const db = window.bcDb;
+  if (!db) {
+    throw new Error("Firebase not initialized. Check builder.html module script.");
+  }
+
+  const serverSnap = await getDoc(doc(db, "servers", serverId));
+  const pageSnap = await getDoc(doc(db, "servers", serverId, "pages", "main"));
+
+  if (!serverSnap.exists()) {
+    throw new Error(`Server ${serverId} was not found.`);
+  }
+
+  const serverData = serverSnap.data() || {};
+  const pageData = pageSnap.exists() ? pageSnap.data() || {} : {};
+
+  const nameEl = document.getElementById("serverNameInput");
+  const ipEl = document.getElementById("serverIpInput");
+
+  if (nameEl) nameEl.value = serverData.name || "";
+  if (ipEl) ipEl.value = serverData.ip || "";
+
+  clearStateObject();
+  state.blocks = Array.isArray(pageData.blocks) ? pageData.blocks : [];
+  state.decorations = Array.isArray(pageData.decorations) ? pageData.decorations : [];
+}
+
+function loadDraftState(serverId) {
+  const draftKey = getDraftKey(serverId);
+  const raw = localStorage.getItem(draftKey);
+  if (!raw) return false;
+
   const parsed = JSON.parse(raw);
-
+  clearStateObject();
   state.blocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
   state.decorations = Array.isArray(parsed.decorations) ? parsed.decorations : [];
+  return true;
+}
+async function loadState() {
+  const routedServerId = serverIdFromUrl || localStorage.getItem(LAST_SERVER_ID_KEY);
+
+  if (routedServerId) {
+    try {
+      await loadServerPageFromFirebase(routedServerId);
+
+      const hasDraft = loadDraftState(routedServerId);
+      if (hasDraft) {
+        console.log(`Loaded local draft for server ${routedServerId}`);
+      }
+
+      renderAll();
+      return;
+    } catch (err) {
+      console.warn("Could not load server page from Firebase:", err);
+    }
+  }
+
+  const hasGenericDraft = loadDraftState(null);
+  if (hasGenericDraft) {
+    renderAll();
+    return;
+  }
+
+  clearStateObject();
+  addTextBlock();
+  addImageBlock();
   renderAll();
 }
 
@@ -1170,7 +1262,12 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-addTextBlock();
-addImageBlock();
 setDecoMode(false);
-renderAll();
+
+loadState().catch((err) => {
+  console.error(err);
+  clearStateObject();
+  addTextBlock();
+  addImageBlock();
+  renderAll();
+});
