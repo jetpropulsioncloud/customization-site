@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { getFirestore, doc, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "PASTE",
@@ -101,7 +101,7 @@ function canvasHeightFromBlocks(blocks, decorations) {
   return GRID.padding * 2 + maxBottom * (GRID.rowHeight + GRID.gap) + 40;
 }
 
-function makeBlockShell(b) {
+function makeBlockShell() {
   const el = document.createElement("div");
   el.className = "pv-block";
 
@@ -113,7 +113,7 @@ function makeBlockShell(b) {
 }
 
 function renderBlock(b) {
-  const { el, body } = makeBlockShell(b);
+  const { el, body } = makeBlockShell();
   const { px, py, pw, ph } = gridToPx(b.x || 0, b.y || 0, b.w || 1, b.h || 1);
 
   el.style.left = `${px}px`;
@@ -153,7 +153,7 @@ function renderBlock(b) {
 function renderDecoration(d) {
   const el = document.createElement("div");
   el.className = "pv-deco";
-  el.textContent = d.emoji || "✨";
+  el.textContent = d.emoji || d.value || "✨";
 
   const { px, py, pw, ph } = gridToPx(d.x || 0, d.y || 0, d.w || 1, d.h || 1);
 
@@ -232,10 +232,17 @@ async function loadServerPage() {
   }
 
   const serverData = serverSnap.data() || {};
+
   if (!serverData.isPublished) {
     renderError("This server page is not published yet.");
     return;
   }
+
+  await updateDoc(serverRef, {
+    views: increment(1)
+  });
+
+  serverData.views = Number(serverData.views || 0) + 1;
 
   const pageData = pageSnap.exists() ? pageSnap.data() || {} : { blocks: [], decorations: [] };
   renderPage(serverData, pageData);
